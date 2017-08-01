@@ -421,6 +421,38 @@ func (dbclient *CouchDatabase) DropDatabase() (*DBOperationResponse, error) {
 
 }
 
+func (dbclient *CouchDatabase) UpdateFunction(id, field, value string) (*DBOperationResponse, error) {
+	connectURL, err := url.Parse(dbclient.CouchInstance.conf.URL)
+	if err != nil {
+		logger.Errorf("URL parse error: %s", err.Error())
+		return nil, err
+	}
+	connectURL.Path = dbclient.DBName + "/_design/patcher/_update/in-place/"
+
+	// id can contain a '/', so encode separately
+	q := connectURL.Query()
+	q.Set(field, value)
+	connectURL = &url.URL{Opaque: connectURL.String() + "/" + encodePathElement(id), RawQuery: q.Encode()}
+
+	//get the number of retries
+	maxRetries := dbclient.CouchInstance.conf.MaxRetries
+
+	resp, _, err := dbclient.CouchInstance.handleRequest(http.MethodPost, connectURL.String(), nil, "", "", maxRetries, true)
+	if err != nil {
+		logger.Errorf("Failed to invoke _update Error: %s\n", err.Error())
+		return nil, err
+	}
+	defer closeResponseBody(resp)
+
+	dbResponse := &DBOperationResponse{}
+	json.NewDecoder(resp.Body).Decode(&dbResponse)
+
+	if dbResponse.Ok == true {
+		return dbResponse, nil
+	}
+	return dbResponse, fmt.Errorf("Failed to update doc")
+}
+
 // EnsureFullCommit calls _ensure_full_commit for explicit fsync
 func (dbclient *CouchDatabase) EnsureFullCommit() (*DBOperationResponse, error) {
 

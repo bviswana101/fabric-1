@@ -115,7 +115,7 @@ type TxSimulator interface {
 	// SetMultipleKeys sets the values for multiple keys in a single call
 	SetStateMultipleKeys(namespace string, kvs map[string][]byte) error
 	// ExecuteUpdate for supporting rich data model (see comments on QueryExecutor above)
-	ExecuteUpdate(query string) error
+	ExecuteUpdate(namespace, query string) (bool, error)
 	// GetTxSimulationResults encapsulates the results of the transaction simulation.
 	// This should contain enough detail for
 	// - The update in the state that would be caused if the transaction is to be committed

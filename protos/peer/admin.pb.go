@@ -37,6 +37,7 @@ It has these top-level messages:
 	QueryStateClose
 	QueryResultBytes
 	QueryResponse
+	UpdateResponse
 	AnchorPeers
 	AnchorPeer
 	ChaincodeReg

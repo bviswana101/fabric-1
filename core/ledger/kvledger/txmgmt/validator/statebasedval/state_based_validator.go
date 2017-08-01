@@ -153,7 +153,7 @@ func addWriteSetToBatch(txRWSet *rwsetutil.TxRwSet, txHeight *version.Height, ba
 			if kvWrite.IsDelete {
 				batch.Delete(ns, kvWrite.Key, txHeight)
 			} else {
-				batch.Put(ns, kvWrite.Key, kvWrite.Value, txHeight)
+				batch.Put(ns, kvWrite.Key, kvWrite.Value, kvWrite.IsDelta, txHeight)
 			}
 		}
 	}

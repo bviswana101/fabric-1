@@ -40,6 +40,7 @@ message KVWrite {
     string key = 1;
     bool is_delete = 2;
     bytes value = 3;
+    bool is_delta = 4;
 }
 
 // Version encapsulates the version of a Key

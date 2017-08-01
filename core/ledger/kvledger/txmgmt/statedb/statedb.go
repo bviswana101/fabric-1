@@ -44,6 +44,9 @@ type VersionedDB interface {
 	GetStateRangeScanIterator(namespace string, startKey string, endKey string) (ResultsIterator, error)
 	// ExecuteQuery executes the given query and returns an iterator that contains results of type *VersionedKV.
 	ExecuteQuery(namespace, query string) (ResultsIterator, error)
+	// ExecuteUpdate verifies the given update query and returns true if it can be applied or false otherwise
+	// it doesnt execute the update, but returns the current value and key the update modifies
+	ExecuteUpdate(namespace, query string) (bool, *VersionedValue, string, error)
 	// ApplyUpdates applies the batch to the underlying db.
 	// height is the height of the highest transaction in the Batch that
 	// a state db implementation is expected to ues as a save point
@@ -87,12 +90,19 @@ type ResultsIterator interface {
 // QueryResult - a general interface for supporting different types of query results. Actual types differ for different queries
 type QueryResult interface{}
 
+type VersionedValueIncDelta struct {
+	VersionedValue
+	IsDelta bool
+}
+
+// With delta, its possible that there are multiple updates to a key
+// so this holds a ordered list of updates
 type nsUpdates struct {
-	m map[string]*VersionedValue
+	m map[string][]*VersionedValueIncDelta
 }
 
 func newNsUpdates() *nsUpdates {
-	return &nsUpdates{make(map[string]*VersionedValue)}
+	return &nsUpdates{make(map[string][]*VersionedValueIncDelta)}
 }
 
 // UpdateBatch encloses the details of multiple `updates`
@@ -115,22 +125,25 @@ func (batch *UpdateBatch) Get(ns string, key string) *VersionedValue {
 	if !ok {
 		return nil
 	}
-	return vv
+	if len(vv) > 1 {
+		panic("Multiple updates for key")
+	}
+	return &vv[0].VersionedValue
 }
 
 // Put adds a VersionedKV
-func (batch *UpdateBatch) Put(ns string, key string, value []byte, version *version.Height) {
+func (batch *UpdateBatch) Put(ns string, key string, value []byte, isDelta bool, version *version.Height) {
 	if value == nil {
 		panic("Nil value not allowed")
 	}
 	nsUpdates := batch.getOrCreateNsUpdates(ns)
-	nsUpdates.m[key] = &VersionedValue{value, version}
+	nsUpdates.m[key] = append(nsUpdates.m[key], &VersionedValueIncDelta{VersionedValue{value, version}, isDelta})
 }
 
 // Delete deletes a Key and associated value
 func (batch *UpdateBatch) Delete(ns string, key string, version *version.Height) {
 	nsUpdates := batch.getOrCreateNsUpdates(ns)
-	nsUpdates.m[key] = &VersionedValue{nil, version}
+	nsUpdates.m[key] = append(nsUpdates.m[key], &VersionedValueIncDelta{VersionedValue{nil, version}, false})
 }
 
 // Exists checks whether the given key exists in the batch
@@ -154,13 +167,26 @@ func (batch *UpdateBatch) GetUpdatedNamespaces() []string {
 	return namespaces
 }
 
+func (batch *UpdateBatch) GetUpdatesRaw(ns string) map[string][]*VersionedValueIncDelta {
+	nsUpdates, ok := batch.updates[ns]
+	if !ok {
+		return nil
+	}
+	return nsUpdates.m
+}
+
 // GetUpdates returns all the updates for a namespace
 func (batch *UpdateBatch) GetUpdates(ns string) map[string]*VersionedValue {
 	nsUpdates, ok := batch.updates[ns]
 	if !ok {
 		return nil
 	}
-	return nsUpdates.m
+	retUpdates := make(map[string]*VersionedValue)
+	for k, v := range nsUpdates.m {
+		retUpdates[k] = &v[0].VersionedValue
+	}
+
+	return retUpdates
 }
 
 // GetRangeScanIterator returns an iterator that iterates over keys of a specific namespace in sorted order
@@ -220,7 +246,7 @@ func (itr *nsIterator) Next() (QueryResult, error) {
 	key := itr.sortedKeys[itr.nextIndex]
 	vv := itr.nsUpdates.m[key]
 	itr.nextIndex++
-	return &VersionedKV{CompositeKey{itr.ns, key}, VersionedValue{vv.Value, vv.Version}}, nil
+	return &VersionedKV{CompositeKey{itr.ns, key}, VersionedValue{vv[0].VersionedValue.Value, vv[0].VersionedValue.Version}}, nil
 }
 
 // Close implements the method from QueryResult interface

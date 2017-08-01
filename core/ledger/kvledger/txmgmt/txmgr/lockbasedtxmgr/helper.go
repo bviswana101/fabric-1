@@ -83,6 +83,26 @@ func (h *queryHelper) executeQuery(namespace, query string) (commonledger.Result
 	return &queryResultsItr{DBItr: dbItr, RWSetBuilder: h.rwsetBuilder}, nil
 }
 
+// execute update is only supported for some db implementations(couchdb), others will return not-supported error
+// it will populate readwrite set based on the updatestring
+func (h *queryHelper) executeUpdate(namespace, query string) (bool, error) {
+	h.checkDone()
+	status, versionedValue, key, err := h.txmgr.db.ExecuteUpdate(namespace, query)
+	if err != nil || status != true {
+		return status, err
+	}
+
+	if versionedValue != nil {
+		_, ver := decomposeVersionedValue(versionedValue)
+		if h.rwsetBuilder != nil {
+			h.rwsetBuilder.AddToReadSet(namespace, key, ver)
+		}
+	}
+	// add the update set
+	h.rwsetBuilder.AddToUpdateSet(namespace, key, []byte(query))
+	return status, nil
+}
+
 func (h *queryHelper) done() {
 	if h.doneInvoked {
 		return

@@ -130,6 +130,11 @@ func (vdb *versionedDB) ExecuteQuery(namespace, query string) (statedb.ResultsIt
 	return nil, errors.New("ExecuteQuery not supported for leveldb")
 }
 
+// ExecuteQuery implements method in VersionedDB interface
+func (vdb *versionedDB) ExecuteUpdate(namespace, query string) (bool, *statedb.VersionedValue, string, error) {
+	return false, nil, "", errors.New("ExecuteUpdate not supported for leveldb")
+}
+
 // ApplyUpdates implements method in VersionedDB interface
 func (vdb *versionedDB) ApplyUpdates(batch *statedb.UpdateBatch, height *version.Height) error {
 	dbBatch := leveldbhelper.NewUpdateBatch()

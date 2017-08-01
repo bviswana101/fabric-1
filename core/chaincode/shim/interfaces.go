@@ -100,6 +100,11 @@ type ChaincodeStubInterface interface {
 	// the ledger when the transaction is validated and successfully committed.
 	DelState(key string) error
 
+	// ExecuteUpdate executes the update query on the ledger. It is similar to PutState
+	// in terms of writeset and affecting ledger.
+	// it returns true if the update can be performed (but not yet committed).
+	ExecuteUpdate(query string) (bool, error)
+
 	// GetStateByRange returns a range iterator over a set of keys in the
 	// ledger. The iterator can be used to iterate over all keys
 	// between the startKey (inclusive) and endKey (exclusive).

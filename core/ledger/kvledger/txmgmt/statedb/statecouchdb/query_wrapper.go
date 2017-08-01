@@ -19,6 +19,7 @@ package statecouchdb
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 )
@@ -110,6 +111,31 @@ func ApplyQueryWrapper(namespace, queryString string, queryLimit, querySkip int)
 
 	return string(editedQuery), nil
 
+}
+
+// ParseUpdateQuery parses an update query and returns the key it operates on and
+// whether a selection condition is specified
+func ParseUpdateQuery(queryString string) (string, bool, string, string, error) {
+	//create a generic map for the query json
+	jsonQueryMap := make(map[string]interface{})
+
+	//unmarshal the selected json into the generic map
+	decoder := json.NewDecoder(bytes.NewBuffer([]byte(queryString)))
+	decoder.UseNumber()
+	err := decoder.Decode(&jsonQueryMap)
+	if err != nil {
+		return "", false, "", "", err
+	}
+
+	if _, ok := jsonQueryMap["key"]; !ok {
+		return "", false, "", "", errors.New("Invalid update spec: no key specified")
+	}
+
+	if _, ok := jsonQueryMap["select"]; ok {
+		return jsonQueryMap["key"].(string), true, jsonQueryMap["field"].(string), jsonQueryMap["value"].(string), nil
+	}
+
+	return jsonQueryMap["key"].(string), false, jsonQueryMap["field"].(string), jsonQueryMap["value"].(string), nil
 }
 
 //setNamespaceInSelector adds an additional hierarchy in the "selector"

@@ -66,6 +66,12 @@ func (rws *RWSetBuilder) AddToWriteSet(ns string, key string, value []byte) {
 	nsRWs.writeMap[key] = newKVWrite(key, value)
 }
 
+func (rws *RWSetBuilder) AddToUpdateSet(ns string, key string, value []byte) {
+	nsRWs := rws.getOrCreateNsRW(ns)
+	nsRWs.writeMap[key] = newKVWrite(key, value)
+	nsRWs.writeMap[key].IsDelta = true
+}
+
 // AddToRangeQuerySet adds a range query info for performing phantom read validation
 func (rws *RWSetBuilder) AddToRangeQuerySet(ns string, rqi *kvrwset.RangeQueryInfo) {
 	nsRWs := rws.getOrCreateNsRW(ns)

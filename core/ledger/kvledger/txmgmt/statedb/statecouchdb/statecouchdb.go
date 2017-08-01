@@ -250,49 +250,96 @@ func (vdb *VersionedDB) ExecuteQuery(namespace, query string) (statedb.ResultsIt
 	return newQueryScanner(*queryResult), nil
 }
 
+func (vdb *VersionedDB) ExecuteUpdate(namespace, query string) (bool, *statedb.VersionedValue, string, error) {
+
+	// verify that the key exists, check if a selection query needs to be run on the key as part of update
+	key, selection, _, _, err := ParseUpdateQuery(query)
+	if err != nil {
+		logger.Debugf("Error calling ParseUpdateQuery(): %s\n", err.Error())
+		return false, nil, "", err
+	}
+
+	if key == "" {
+		return false, nil, "", errors.New("Failed to get key from querystring")
+	}
+
+	var value *statedb.VersionedValue
+	if selection {
+		value, err = vdb.GetState(namespace, key)
+		if err != nil {
+			logger.Debugf("Error reading the document with key: %s error: %s\n", key, err.Error())
+			return false, nil, "", err
+		}
+
+	}
+	return true, value, key, nil
+}
+
 // ApplyUpdates implements method in VersionedDB interface
 func (vdb *VersionedDB) ApplyUpdates(batch *statedb.UpdateBatch, height *version.Height) error {
 
 	namespaces := batch.GetUpdatedNamespaces()
 	for _, ns := range namespaces {
-		updates := batch.GetUpdates(ns)
-		for k, vv := range updates {
+		updates := batch.GetUpdatesRaw(ns)
+		for k, vvdeltas := range updates {
 			compositeKey := constructCompositeKey(ns, k)
 			logger.Debugf("Channel [%s]: Applying key=[%#v]", vdb.dbName, compositeKey)
 
-			//convert nils to deletes
-			if vv.Value == nil {
+			for _, vvd := range vvdeltas {
+				vv := vvd.VersionedValue
+				//convert nils to deletes
+				if vv.Value == nil {
+					vdb.db.DeleteDoc(string(compositeKey), "")
+				} else if vvd.IsDelta == true {
+					// ensure that value is json
+					if !couchdb.IsJSON(string(vv.Value)) {
+						logger.Errorf("Update is not valid")
+						return errors.New("Invalid update specification")
+					}
 
-				vdb.db.DeleteDoc(string(compositeKey), "")
+					// get the update to apply
+					key, _, field, value, err := ParseUpdateQuery(string(vv.Value))
+					if err != nil {
+						logger.Debugf("Failed to parse update string: %s", err.Error())
+						return err
+					}
 
-			} else {
-				couchDoc := &couchdb.CouchDoc{}
+					// update function
+					_, err = vdb.db.UpdateFunction(key, field, value)
+					if err != nil {
+						logger.Debugf("Failed to perform the update function on key %s %s", key, err.Error())
+						return err
+					}
 
-				//Check to see if the value is a valid JSON
-				//If this is not a valid JSON, then store as an attachment
-				if couchdb.IsJSON(string(vv.Value)) {
-					// Handle it as json
-					couchDoc.JSONValue = addVersionAndChainCodeID(vv.Value, ns, vv.Version)
-				} else { // if the data is not JSON, save as binary attachment in Couch
+				} else {
+					couchDoc := &couchdb.CouchDoc{}
 
-					attachment := &couchdb.Attachment{}
-					attachment.AttachmentBytes = vv.Value
-					attachment.ContentType = "application/octet-stream"
-					attachment.Name = binaryWrapper
-					attachments := append([]*couchdb.Attachment{}, attachment)
+					//Check to see if the value is a valid JSON
+					//If this is not a valid JSON, then store as an attachment
+					if couchdb.IsJSON(string(vv.Value)) {
+						// Handle it as json
+						couchDoc.JSONValue = addVersionAndChainCodeID(vv.Value, ns, vv.Version)
+					} else { // if the data is not JSON, save as binary attachment in Couch
 
-					couchDoc.Attachments = attachments
-					couchDoc.JSONValue = addVersionAndChainCodeID(nil, ns, vv.Version)
-				}
+						attachment := &couchdb.Attachment{}
+						attachment.AttachmentBytes = vv.Value
+						attachment.ContentType = "application/octet-stream"
+						attachment.Name = binaryWrapper
+						attachments := append([]*couchdb.Attachment{}, attachment)
 
-				// SaveDoc using couchdb client and use attachment to persist the binary data
-				rev, err := vdb.db.SaveDoc(string(compositeKey), "", couchDoc)
-				if err != nil {
-					logger.Errorf("Error during Commit(): %s\n", err.Error())
-					return err
-				}
-				if rev != "" {
-					logger.Debugf("Saved document revision number: %s\n", rev)
+						couchDoc.Attachments = attachments
+						couchDoc.JSONValue = addVersionAndChainCodeID(nil, ns, vv.Version)
+					}
+
+					// SaveDoc using couchdb client and use attachment to persist the binary data
+					rev, err := vdb.db.SaveDoc(string(compositeKey), "", couchDoc)
+					if err != nil {
+						logger.Errorf("Error during Commit(): %s\n", err.Error())
+						return err
+					}
+					if rev != "" {
+						logger.Debugf("Saved document revision number: %s\n", rev)
+					}
 				}
 			}
 		}

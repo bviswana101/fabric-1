@@ -492,6 +492,44 @@ func (handler *Handler) handleDelState(key string, txid string) error {
 	return errors.New(fmt.Sprintf("[%s]Incorrect chaincode message %s received. Expecting %s or %s", shorttxid(responseMsg.Txid), responseMsg.Type, pb.ChaincodeMessage_RESPONSE, pb.ChaincodeMessage_ERROR))
 }
 
+// handleDelState communicates with the validator to delete a key from the state in the ledger.
+func (handler *Handler) handleExecuteUpdate(query string, txid string) (bool, error) {
+	// Create the channel on which to communicate the response from validating peer
+	var respChan chan pb.ChaincodeMessage
+	var err error
+	if respChan, err = handler.createChannel(txid); err != nil {
+		return false, err
+	}
+
+	defer handler.deleteChannel(txid)
+
+	// Send DEL_STATE message to validator chaincode support
+	payload := []byte(query)
+	msg := &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_EXECUTE_UPDATE, Payload: payload, Txid: txid}
+	chaincodeLogger.Debugf("[%s]Sending %s", shorttxid(msg.Txid), pb.ChaincodeMessage_EXECUTE_UPDATE)
+
+	var responseMsg pb.ChaincodeMessage
+
+	if responseMsg, err = handler.sendReceive(msg, respChan); err != nil {
+		return false, errors.New(fmt.Sprintf("[%s]error sending DEL_STATE %s", shorttxid(msg.Txid), pb.ChaincodeMessage_EXECUTE_UPDATE))
+		chaincodeLogger.Debugf("[%s]Received %s. Executed update query", msg.Txid, pb.ChaincodeMessage_RESPONSE)
+
+		updateResponse := &pb.UpdateResponse{}
+		if err = proto.Unmarshal(responseMsg.Payload, updateResponse); err != nil {
+			return false, errors.New(fmt.Sprintf("[%s]unmarshall error", shorttxid(responseMsg.Txid)))
+		}
+		return updateResponse.Ok, nil
+	}
+	if responseMsg.Type.String() == pb.ChaincodeMessage_ERROR.String() {
+		// Error response
+		chaincodeLogger.Errorf("[%s]Received %s. Payload: %s", msg.Txid, pb.ChaincodeMessage_ERROR, responseMsg.Payload)
+		return false, errors.New(string(responseMsg.Payload[:]))
+	}
+
+	// Incorrect chaincode message received
+	return false, errors.New(fmt.Sprintf("[%s]Incorrect chaincode message %s received. Expecting %s or %s", shorttxid(responseMsg.Txid), responseMsg.Type, pb.ChaincodeMessage_RESPONSE, pb.ChaincodeMessage_ERROR))
+}
+
 func (handler *Handler) handleGetStateByRange(startKey, endKey string, txid string) (*pb.QueryResponse, error) {
 	// Create the channel on which to communicate the response from validating peer
 	var respChan chan pb.ChaincodeMessage

@@ -78,6 +78,18 @@ func (s *lockBasedTxSimulator) GetTxSimulationResults() ([]byte, error) {
 }
 
 // ExecuteUpdate implements method in interface `ledger.TxSimulator`
-func (s *lockBasedTxSimulator) ExecuteUpdate(query string) error {
-	return errors.New("Not supported")
+func (s *lockBasedTxSimulator) ExecuteUpdate(namespace, query string) (bool, error) {
+	s.helper.checkDone()
+	status, rs, key, err := s.helper.txmgr.db.ExecuteUpdate(namespace, query)
+	if err != nil {
+		return false, err
+	}
+	if status != true {
+		return false, errors.New("Failed to perform update")
+	}
+	if rs != nil {
+		s.rwsetBuilder.AddToReadSet(namespace, key, rs.Version)
+	}
+	s.rwsetBuilder.AddToUpdateSet(namespace, key, []byte(query))
+	return status, nil
 }
