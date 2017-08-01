@@ -208,6 +208,10 @@ func (stub *MockStub) DelState(key string) error {
 	return nil
 }
 
+func (Stub *MockStub) ExecuteUpdate(query string) (bool, error) {
+	return false, errors.New("Not Implemented")
+}
+
 func (stub *MockStub) GetStateByRange(startKey, endKey string) (StateQueryIteratorInterface, error) {
 	if err := validateSimpleKeys(startKey, endKey); err != nil {
 		return nil, err

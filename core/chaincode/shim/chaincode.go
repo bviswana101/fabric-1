@@ -462,6 +462,12 @@ func (stub *ChaincodeStub) GetHistoryForKey(key string) (HistoryQueryIteratorInt
 	return &HistoryQueryIterator{CommonIterator: &CommonIterator{stub.handler, stub.TxID, response, 0}}, nil
 }
 
+// ExecuteUpdate documentation can be found in interfaces.go
+func (stub *ChaincodeStub) ExecuteUpdate(query string) (bool, error) {
+	return stub.handler.handleExecuteUpdate(query, stub.TxID)
+
+}
+
 //CreateCompositeKey documentation can be found in interfaces.go
 func (stub *ChaincodeStub) CreateCompositeKey(objectType string, attributes []string) (string, error) {
 	return createCompositeKey(objectType, attributes)
