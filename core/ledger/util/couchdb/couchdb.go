@@ -431,7 +431,8 @@ func (dbclient *CouchDatabase) UpdateFunction(id, field, value string) (*DBOpera
 
 	// id can contain a '/', so encode separately
 	q := connectURL.Query()
-	q.Set(field, value)
+	q.Set("field", field)
+	q.Set("value", value)
 	connectURL = &url.URL{Opaque: connectURL.String() + "/" + encodePathElement(id), RawQuery: q.Encode()}
 
 	//get the number of retries
@@ -450,7 +451,7 @@ func (dbclient *CouchDatabase) UpdateFunction(id, field, value string) (*DBOpera
 	if dbResponse.Ok == true {
 		return dbResponse, nil
 	}
-	return dbResponse, fmt.Errorf("Failed to update doc")
+	return dbResponse, fmt.Errorf("Failed to update doc %s", dbResponse.Ok)
 }
 
 // EnsureFullCommit calls _ensure_full_commit for explicit fsync

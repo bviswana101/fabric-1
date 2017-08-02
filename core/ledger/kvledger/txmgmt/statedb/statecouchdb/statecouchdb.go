@@ -253,7 +253,7 @@ func (vdb *VersionedDB) ExecuteQuery(namespace, query string) (statedb.ResultsIt
 func (vdb *VersionedDB) ExecuteUpdate(namespace, query string) (bool, *statedb.VersionedValue, string, error) {
 
 	// verify that the key exists, check if a selection query needs to be run on the key as part of update
-	key, _, _, _, err := ParseUpdateQuery(query)
+	key, selection, _, _, err := ParseUpdateQuery(query)
 	if err != nil {
 		logger.Debugf("Error calling ParseUpdateQuery(): %s\n", err.Error())
 		return false, nil, "", err
@@ -269,7 +269,13 @@ func (vdb *VersionedDB) ExecuteUpdate(namespace, query string) (bool, *statedb.V
 		logger.Debugf("Failed to get the key to update. Error: %s", err)
 		return false, nil, key, fmt.Errorf("Key %s to update does not exist. Error %s", key, err)
 	}
-	return true, value, key, nil
+
+	if selection {
+		// return value read for readset
+		return true, value, key, nil
+	}
+	// return nil for value to denote no readset
+	return true, nil, key, nil
 }
 
 // ApplyUpdates implements method in VersionedDB interface
@@ -304,7 +310,7 @@ func (vdb *VersionedDB) ApplyUpdates(batch *statedb.UpdateBatch, height *version
 					// update function
 					_, err = vdb.db.UpdateFunction(string(compositeKey), field, value)
 					if err != nil {
-						logger.Debugf("Failed to perform the update function on key %s %s", string(compositekey), err.Error())
+						logger.Debugf("Failed to perform the update function on key %s %s", string(compositeKey), err.Error())
 						return err
 					}
 

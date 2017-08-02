@@ -511,7 +511,11 @@ func (handler *Handler) handleExecuteUpdate(query string, txid string) (bool, er
 	var responseMsg pb.ChaincodeMessage
 
 	if responseMsg, err = handler.sendReceive(msg, respChan); err != nil {
-		return false, errors.New(fmt.Sprintf("[%s]error sending DEL_STATE %s", shorttxid(msg.Txid), pb.ChaincodeMessage_EXECUTE_UPDATE))
+		return false, errors.New(fmt.Sprintf("[%s]error sending EXECUTE_UPDATE %s", shorttxid(msg.Txid), pb.ChaincodeMessage_EXECUTE_UPDATE))
+	}
+
+	if responseMsg.Type.String() == pb.ChaincodeMessage_RESPONSE.String() {
+		// Success response
 		chaincodeLogger.Debugf("[%s]Received %s. Executed update query", msg.Txid, pb.ChaincodeMessage_RESPONSE)
 
 		updateResponse := &pb.UpdateResponse{}
@@ -520,6 +524,7 @@ func (handler *Handler) handleExecuteUpdate(query string, txid string) (bool, er
 		}
 		return updateResponse.Ok, nil
 	}
+
 	if responseMsg.Type.String() == pb.ChaincodeMessage_ERROR.String() {
 		// Error response
 		chaincodeLogger.Errorf("[%s]Received %s. Payload: %s", msg.Txid, pb.ChaincodeMessage_ERROR, responseMsg.Payload)

@@ -120,11 +120,11 @@ func (meqe *mockExecQuerySimulator) SetStateMultipleKeys(namespace string, kvs m
 	return meqe.txsim.SetStateMultipleKeys(namespace, kvs)
 }
 
-func (meqe *mockExecQuerySimulator) ExecuteUpdate(query string) error {
+func (meqe *mockExecQuerySimulator) ExecuteUpdate(namespace, query string) (bool, error) {
 	if meqe.txsim == nil {
-		return fmt.Errorf("SetState txsimulator not initialed")
+		return false, fmt.Errorf("SetState txsimulator not initialed")
 	}
-	return meqe.txsim.ExecuteUpdate(query)
+	return meqe.txsim.ExecuteUpdate(namespace, query)
 }
 
 func (meqe *mockExecQuerySimulator) GetTxSimulationResults() ([]byte, error) {

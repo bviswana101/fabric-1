@@ -34,6 +34,7 @@ import (
 // remove - requires a key
 // get - requires one argument, a key, and returns a value
 // keys - requires no arguments, returns all keys
+// update - requires a query string, returns true/false
 
 // SimpleChaincode example simple Chaincode implementation
 type SimpleChaincode struct {
@@ -133,7 +134,7 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 		}
 
 		for key, value := range keys {
-			fmt.Printf("key %d contains %s\n", key, value)
+			fmt.Printf("keys: key %d contains %s\n", key, value)
 		}
 
 		jsonKeys, err := json.Marshal(keys)
@@ -142,6 +143,18 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 		}
 
 		return shim.Success(jsonKeys)
+	case "update":
+		fmt.Printf("Calling update on stub")
+		query := args[0]
+		status, err := stub.ExecuteUpdate(query)
+		if err != nil {
+			return shim.Error(fmt.Sprintf("update operation failed. Error accessing state: %s", err))
+		}
+		if status {
+			return shim.Success([]byte("true"))
+		}
+
+		return shim.Success([]byte("false"))
 	case "query":
 		query := args[0]
 		keysIter, err := stub.GetQueryResult(query)
@@ -194,7 +207,7 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 		return shim.Success(jsonKeys)
 
 	default:
-		return shim.Success([]byte("Unsupported operation"))
+		return shim.Success([]byte(fmt.Sprintf("Unsupported operation %s", function)))
 	}
 }
 
