@@ -253,7 +253,7 @@ func (vdb *VersionedDB) ExecuteQuery(namespace, query string) (statedb.ResultsIt
 func (vdb *VersionedDB) ExecuteUpdate(namespace, query string) (bool, *statedb.VersionedValue, string, error) {
 
 	// verify that the key exists, check if a selection query needs to be run on the key as part of update
-	key, selection, _, _, err := ParseUpdateQuery(query)
+	key, _, _, _, err := ParseUpdateQuery(query)
 	if err != nil {
 		logger.Debugf("Error calling ParseUpdateQuery(): %s\n", err.Error())
 		return false, nil, "", err
@@ -263,14 +263,11 @@ func (vdb *VersionedDB) ExecuteUpdate(namespace, query string) (bool, *statedb.V
 		return false, nil, "", errors.New("Failed to get key from querystring")
 	}
 
-	var value *statedb.VersionedValue
-	if selection {
-		value, err = vdb.GetState(namespace, key)
-		if err != nil {
-			logger.Debugf("Error reading the document with key: %s error: %s\n", key, err.Error())
-			return false, nil, "", err
-		}
-
+	// check key for existence (ignoring selection for now)
+	value, err := vdb.GetState(namespace, key)
+	if err != nil || value == nil {
+		logger.Debugf("Failed to get the key to update. Error: %s", err)
+		return false, nil, key, fmt.Errorf("Key %s to update does not exist. Error %s", key, err)
 	}
 	return true, value, key, nil
 }
@@ -298,16 +295,16 @@ func (vdb *VersionedDB) ApplyUpdates(batch *statedb.UpdateBatch, height *version
 					}
 
 					// get the update to apply
-					key, _, field, value, err := ParseUpdateQuery(string(vv.Value))
+					_, _, field, value, err := ParseUpdateQuery(string(vv.Value))
 					if err != nil {
 						logger.Debugf("Failed to parse update string: %s", err.Error())
 						return err
 					}
 
 					// update function
-					_, err = vdb.db.UpdateFunction(key, field, value)
+					_, err = vdb.db.UpdateFunction(string(compositeKey), field, value)
 					if err != nil {
-						logger.Debugf("Failed to perform the update function on key %s %s", key, err.Error())
+						logger.Debugf("Failed to perform the update function on key %s %s", string(compositekey), err.Error())
 						return err
 					}
 

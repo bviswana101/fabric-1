@@ -114,7 +114,7 @@ func ApplyQueryWrapper(namespace, queryString string, queryLimit, querySkip int)
 }
 
 // ParseUpdateQuery parses an update query and returns the key it operates on and
-// whether a selection condition is specified
+// whether a selection condition is specified. The field and value it is to update
 func ParseUpdateQuery(queryString string) (string, bool, string, string, error) {
 	//create a generic map for the query json
 	jsonQueryMap := make(map[string]interface{})
