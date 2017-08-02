@@ -1059,7 +1059,7 @@ func TestChaincodeInvokeChaincodeErrorCase(t *testing.T) {
 
 // Test the invocation of a transaction.
 func TestQueries(t *testing.T) {
-	testForSkip(t)
+	//testForSkip(t)
 
 	chainID := util.GetTestChainID()
 
@@ -1251,7 +1251,7 @@ func TestQueries(t *testing.T) {
 		err = json.Unmarshal(retval, &keys)
 
 		//check to see if there are 100 values
-		if len(keys) != 100 {
+		if len(keys) != 101 {
 			t.Fail()
 			t.Logf("Error detected with the rich query, should have returned 100 but returned %v %s", len(keys), keys)
 			theChaincodeSupport.Stop(ctxt, cccid, &pb.ChaincodeDeploymentSpec{ChaincodeSpec: spec})
@@ -1279,7 +1279,7 @@ func TestQueries(t *testing.T) {
 		err = json.Unmarshal(retval, &keys)
 
 		//check to see if there are 5 values
-		if len(keys) != 5 {
+		if len(keys) != 10 {
 			t.Fail()
 			t.Logf("Error detected with the range query, should have returned 5 but returned %v", len(keys))
 			theChaincodeSupport.Stop(ctxt, cccid, &pb.ChaincodeDeploymentSpec{ChaincodeSpec: spec})
@@ -1337,9 +1337,57 @@ func TestQueries(t *testing.T) {
 		err = json.Unmarshal(retval, &keys)
 
 		//check to see if there are 5 values
-		if len(keys) != 5 {
+		if len(keys) != 50 {
 			t.Fail()
 			t.Logf("Error detected with the rich query, should have returned 5 but returned %v", len(keys))
+			theChaincodeSupport.Stop(ctxt, cccid, &pb.ChaincodeDeploymentSpec{ChaincodeSpec: spec})
+			return
+		}
+
+		// The following rich query should update 1 marble to new value
+		f = "update"
+		args = util.ToChaincodeArgs(f, "{\"key\":\"marble001\", \"selection\":\"something for now\", \"field\":\"owner\",\"value\":\"alfred\"}")
+		spec = &pb.ChaincodeSpec{Type: 1, ChaincodeId: cID, Input: &pb.ChaincodeInput{Args: args}}
+		_, _, retval, err = invoke(ctxt, chainID, spec, nextBlockNumber, nil)
+		nextBlockNumber++
+		if err != nil {
+			t.Fail()
+			t.Logf("Error invoking <%s>: %s", ccID, err)
+			theChaincodeSupport.Stop(ctxt, cccid, &pb.ChaincodeDeploymentSpec{ChaincodeSpec: spec})
+			return
+		}
+
+		if string(retval) != "true" {
+			t.Fail()
+			t.Logf("Got return values as %s", string(retval))
+			theChaincodeSupport.Stop(ctxt, cccid, &pb.ChaincodeDeploymentSpec{ChaincodeSpec: spec})
+			return
+		}
+
+		time.Sleep(120 * time.Second)
+
+		//The following rich query should return 1 marble
+		f = "query"
+		args = util.ToChaincodeArgs(f, "{\"selector\":{\"owner\":\"alfred\"}}")
+
+		spec = &pb.ChaincodeSpec{Type: 1, ChaincodeId: cID, Input: &pb.ChaincodeInput{Args: args}}
+		_, _, retval, err = invoke(ctxt, chainID, spec, nextBlockNumber, nil)
+		nextBlockNumber++
+		if err != nil {
+			t.Fail()
+			t.Logf("Error invoking <%s>: %s", ccID, err)
+			theChaincodeSupport.Stop(ctxt, cccid, &pb.ChaincodeDeploymentSpec{ChaincodeSpec: spec})
+			return
+		}
+
+		//unmarshal the results
+		err = json.Unmarshal(retval, &keys)
+
+		//check to see if there are 1 values
+		if len(keys) != 1 {
+			t.Logf("Got the keys as %s", keys)
+			t.Fail()
+			t.Logf("Error detected with the rich query, should have returned 1 but returned %v", len(keys))
 			theChaincodeSupport.Stop(ctxt, cccid, &pb.ChaincodeDeploymentSpec{ChaincodeSpec: spec})
 			return
 		}
