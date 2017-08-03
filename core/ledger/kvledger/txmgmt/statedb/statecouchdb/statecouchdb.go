@@ -278,42 +278,6 @@ func (vdb *VersionedDB) ExecuteUpdate(namespace, query string) (bool, *statedb.V
 	return true, nil, key, nil
 }
 
-func (vdb *VersionedDB) applyDeltas(ns string, patches map[string][]*statedb.VersionedValueIncDelta) error {
-	for k, vvdeltas := range patches {
-		compositeKey := constructCompositeKey(ns, k)
-		for _, vvdelta := range vvdeltas {
-			if !vvdelta.IsDelta {
-				panic("Should not come here!")
-			}
-
-			vv := vvdelta.VersionedValue
-			logger.Debugf("Channel [%s]: Applying Patch key=[%#v]", vdb.dbName, compositeKey)
-
-			// ensure that value is json
-			if !couchdb.IsJSON(string(vv.Value)) {
-				logger.Errorf("Update is not valid")
-				return errors.New("Invalid update specification")
-			}
-
-			// get the update to apply
-			_, _, field, value, err := ParseUpdateQuery(string(vv.Value))
-			if err != nil {
-				logger.Debugf("Failed to parse update string: %s", err.Error())
-				return err
-			}
-
-			// update function
-			_, err = vdb.db.UpdateFunction(string(compositeKey), field, value)
-			if err != nil {
-				logger.Debugf("Failed to perform the update function on key %s %s", string(compositeKey), err.Error())
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
 // ApplyUpdates implements method in VersionedDB interface
 func (vdb *VersionedDB) ApplyUpdates(batch *statedb.UpdateBatch, height *version.Height) error {
 
@@ -570,4 +534,40 @@ func (scanner *queryScanner) Next() (statedb.QueryResult, error) {
 
 func (scanner *queryScanner) Close() {
 	scanner = nil
+}
+
+func (vdb *VersionedDB) applyDeltas(ns string, patches map[string][]*statedb.VersionedValueIncDelta) error {
+	for k, vvdeltas := range patches {
+		compositeKey := constructCompositeKey(ns, k)
+		for _, vvdelta := range vvdeltas {
+			if !vvdelta.IsDelta {
+				panic("Should not come here!")
+			}
+
+			vv := vvdelta.VersionedValue
+			logger.Debugf("Channel [%s]: Applying Patch key=[%#v]", vdb.dbName, compositeKey)
+
+			// ensure that value is json
+			if !couchdb.IsJSON(string(vv.Value)) {
+				logger.Errorf("Update is not valid")
+				return errors.New("Invalid update specification")
+			}
+
+			// get the update to apply
+			_, _, field, value, err := ParseUpdateQuery(string(vv.Value))
+			if err != nil {
+				logger.Debugf("Failed to parse update string: %s", err.Error())
+				return err
+			}
+
+			// update function
+			_, err = vdb.db.UpdateFunction(string(compositeKey), field, value)
+			if err != nil {
+				logger.Debugf("Failed to perform the update function on key %s %s", string(compositeKey), err.Error())
+				return err
+			}
+		}
+	}
+
+	return nil
 }
