@@ -278,73 +278,104 @@ func (vdb *VersionedDB) ExecuteUpdate(namespace, query string) (bool, *statedb.V
 	return true, nil, key, nil
 }
 
+func (vdb *VersionedDB) applyDeltas(ns string, patches map[string][]*statedb.VersionedValueIncDelta) error {
+	for k, vvdeltas := range patches {
+		compositeKey := constructCompositeKey(ns, k)
+		for _, vvdelta := range vvdeltas {
+			if !vvdelta.IsDelta {
+				panic("Should not come here!")
+			}
+
+			vv := vvdelta.VersionedValue
+			logger.Debugf("Channel [%s]: Applying Patch key=[%#v]", vdb.dbName, compositeKey)
+
+			// ensure that value is json
+			if !couchdb.IsJSON(string(vv.Value)) {
+				logger.Errorf("Update is not valid")
+				return errors.New("Invalid update specification")
+			}
+
+			// get the update to apply
+			_, _, field, value, err := ParseUpdateQuery(string(vv.Value))
+			if err != nil {
+				logger.Debugf("Failed to parse update string: %s", err.Error())
+				return err
+			}
+
+			// update function
+			_, err = vdb.db.UpdateFunction(string(compositeKey), field, value)
+			if err != nil {
+				logger.Debugf("Failed to perform the update function on key %s %s", string(compositeKey), err.Error())
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // ApplyUpdates implements method in VersionedDB interface
 func (vdb *VersionedDB) ApplyUpdates(batch *statedb.UpdateBatch, height *version.Height) error {
 
 	namespaces := batch.GetUpdatedNamespaces()
 	for _, ns := range namespaces {
 		updates := batch.GetUpdatesRaw(ns)
+		var patches = make(map[string][]*statedb.VersionedValueIncDelta)
+
 		for k, vvdeltas := range updates {
 			compositeKey := constructCompositeKey(ns, k)
 			logger.Debugf("Channel [%s]: Applying key=[%#v]", vdb.dbName, compositeKey)
 
-			for _, vvd := range vvdeltas {
-				vv := vvd.VersionedValue
-				//convert nils to deletes
-				if vv.Value == nil {
-					vdb.db.DeleteDoc(string(compositeKey), "")
-				} else if vvd.IsDelta == true {
-					// ensure that value is json
-					if !couchdb.IsJSON(string(vv.Value)) {
-						logger.Errorf("Update is not valid")
-						return errors.New("Invalid update specification")
-					}
+			// if there are multiple vvd, then only the first can be PutState(DelState), the
+			// rest can only be deltas
+			vv := vvdeltas[0].VersionedValue
+			if vvdeltas[0].IsDelta {
+				patches[k] = vvdeltas
+				continue
+			} else if len(vvdeltas) > 0 {
+				patches[k] = vvdeltas[1:]
+			}
 
-					// get the update to apply
-					_, _, field, value, err := ParseUpdateQuery(string(vv.Value))
-					if err != nil {
-						logger.Debugf("Failed to parse update string: %s", err.Error())
-						return err
-					}
+			//convert nils to deletes
+			if vv.Value == nil {
+				vdb.db.DeleteDoc(string(compositeKey), "")
+			} else {
+				couchDoc := &couchdb.CouchDoc{}
 
-					// update function
-					_, err = vdb.db.UpdateFunction(string(compositeKey), field, value)
-					if err != nil {
-						logger.Debugf("Failed to perform the update function on key %s %s", string(compositeKey), err.Error())
-						return err
-					}
+				//Check to see if the value is a valid JSON
+				//If this is not a valid JSON, then store as an attachment
+				if couchdb.IsJSON(string(vv.Value)) {
+					// Handle it as json
+					couchDoc.JSONValue = addVersionAndChainCodeID(vv.Value, ns, vv.Version)
+				} else { // if the data is not JSON, save as binary attachment in Couch
 
-				} else {
-					couchDoc := &couchdb.CouchDoc{}
+					attachment := &couchdb.Attachment{}
+					attachment.AttachmentBytes = vv.Value
+					attachment.ContentType = "application/octet-stream"
+					attachment.Name = binaryWrapper
+					attachments := append([]*couchdb.Attachment{}, attachment)
 
-					//Check to see if the value is a valid JSON
-					//If this is not a valid JSON, then store as an attachment
-					if couchdb.IsJSON(string(vv.Value)) {
-						// Handle it as json
-						couchDoc.JSONValue = addVersionAndChainCodeID(vv.Value, ns, vv.Version)
-					} else { // if the data is not JSON, save as binary attachment in Couch
+					couchDoc.Attachments = attachments
+					couchDoc.JSONValue = addVersionAndChainCodeID(nil, ns, vv.Version)
+				}
 
-						attachment := &couchdb.Attachment{}
-						attachment.AttachmentBytes = vv.Value
-						attachment.ContentType = "application/octet-stream"
-						attachment.Name = binaryWrapper
-						attachments := append([]*couchdb.Attachment{}, attachment)
-
-						couchDoc.Attachments = attachments
-						couchDoc.JSONValue = addVersionAndChainCodeID(nil, ns, vv.Version)
-					}
-
-					// SaveDoc using couchdb client and use attachment to persist the binary data
-					rev, err := vdb.db.SaveDoc(string(compositeKey), "", couchDoc)
-					if err != nil {
-						logger.Errorf("Error during Commit(): %s\n", err.Error())
-						return err
-					}
-					if rev != "" {
-						logger.Debugf("Saved document revision number: %s\n", rev)
-					}
+				// SaveDoc using couchdb client and use attachment to persist the binary data
+				rev, err := vdb.db.SaveDoc(string(compositeKey), "", couchDoc)
+				if err != nil {
+					logger.Errorf("Error during Commit(): %s\n", err.Error())
+					return err
+				}
+				if rev != "" {
+					logger.Debugf("Saved document revision number: %s\n", rev)
 				}
 			}
+		}
+
+		// apply all the patches
+		err := vdb.applyDeltas(ns, patches)
+		if err != nil {
+			logger.Errorf("Failed to apply deltas: %s\n", err.Error())
+			return err
 		}
 	}
 

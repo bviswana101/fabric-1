@@ -137,12 +137,18 @@ func (batch *UpdateBatch) Put(ns string, key string, value []byte, isDelta bool,
 		panic("Nil value not allowed")
 	}
 	nsUpdates := batch.getOrCreateNsUpdates(ns)
+	if !isDelta {
+		// any full write will overwrite all previous deltas
+		nsUpdates.m[key] = make([]*VersionedValueIncDelta, 0)
+	}
 	nsUpdates.m[key] = append(nsUpdates.m[key], &VersionedValueIncDelta{VersionedValue{value, version}, isDelta})
 }
 
 // Delete deletes a Key and associated value
 func (batch *UpdateBatch) Delete(ns string, key string, version *version.Height) {
 	nsUpdates := batch.getOrCreateNsUpdates(ns)
+	// all deltas,put before delete do not matter
+	nsUpdates.m[key] = make([]*VersionedValueIncDelta, 0)
 	nsUpdates.m[key] = append(nsUpdates.m[key], &VersionedValueIncDelta{VersionedValue{nil, version}, false})
 }
 
